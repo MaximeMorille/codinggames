@@ -8,6 +8,8 @@ let bombs = 2;
 const bombed = [];
 let turn = 0;
 const NB_ATTACKING_BASES = 3;
+const NEUTRALS = {};
+let MEAN_DISTANCE = 0;
 
 function initIfNeededFactory(factory) {
     if (!FACTORIES[factory]) {
@@ -109,23 +111,24 @@ function setNearestHostileFactory(factory, factories) {
 
 function searchMostProductiveAmongNearestFactory(factory, factories) {
     return factories.reduce(
-        (result, hostileFactory) => {
-            const isProductive = result.production < hostileFactory.production;
-            const isNearer = result.distance > hostileFactory.links[factory.id];
+        (result, testedFactory) => {
+            const notSame = factory.id !== testedFactory.id;
+            const isProductive = result.production < testedFactory.production;
+            const isNearer = result.distance > testedFactory.links[factory.id];
 
-            if (isNearer && isProductive) {
+            if (notSame && isNearer && isProductive) {
                 return {
-                    factory: hostileFactory,
-                    distance: hostileFactory.links[factory.id],
-                    production: hostileFactory.production,
+                    factory: testedFactory,
+                    distance: testedFactory.links[factory.id],
+                    production: testedFactory.production,
                 };
             }
 
-            if (isNearer) {
+            if (notSame && isNearer) {
                 return {
-                    factory: hostileFactory,
-                    distance: hostileFactory.links[factory.id],
-                    production: hostileFactory.production,
+                    factory: testedFactory,
+                    distance: testedFactory.links[factory.id],
+                    production: testedFactory.production,
                 };
             }
 
@@ -192,15 +195,16 @@ function buildAttackCommand(myFactories) {
         let newCommand = '';
         let currentTroops = factory.troops;
         factory.neutrals.forEach((f) => {
-            if (currentTroops > 0) {
-                const force = f.troops + 1;
+            if (currentTroops > 0 && NEUTRALS[f.id].troops > 0) {
+                const force = Math.min(f.troops + 1, currentTroops);
                 newCommand += `MOVE ${factory.id} ${f.id} ${force};`;
                 currentTroops -= force;
+                NEUTRALS[f.id].troops -= force;
             }
         });
 
         if (currentTroops > 0 && factory.nearestHostile !== undefined) {
-            newCommand += `MOVE ${factory.id} ${factory.nearestHostile.id} ${factory.troops};`;
+                newCommand += `MOVE ${factory.id} ${factory.nearestHostile.id} ${factory.troops};`;
         }
 
         if (newCommand === '') {
@@ -230,6 +234,9 @@ function buildOrders(turn) {
                 return [[...tmpOwned, FACTORIES[id]], tmpNeutral, tmpNotOwned];
             }
             if (FACTORIES[id].owner === 'NEUTRAL') {
+                if (!NEUTRALS[id]) {
+                    NEUTRALS[id] = FACTORIES[id];
+                }
                 return [tmpOwned, [...tmpNeutral, FACTORIES[id]], tmpNotOwned];
             }
             return [tmpOwned, tmpNeutral, [...tmpNotOwned, FACTORIES[id]]];
@@ -238,7 +245,7 @@ function buildOrders(turn) {
     );
 
     myFactories = myFactories.map((factory) => {
-        let enhancedFactory = setNearestAllyFactory(factory, myFactories.filter(withLessThanTenTroops));
+        let enhancedFactory = setNearestAllyFactory(factory, myFactories);
         const neutralsWithProduction = neutralFactories.filter(withProduction);
         enhancedFactory = setNeutralFactories(enhancedFactory, neutralsWithProduction);
         enhancedFactory = setNearestHostileFactory(enhancedFactory, ennemyFactories);
@@ -254,6 +261,7 @@ function buildOrders(turn) {
 
 const factoryCount = parseInt(readline()); // the number of factories
 const linkCount = parseInt(readline()); // the number of links between factories
+let sumDistance = 0;
 for (let i = 0; i < linkCount; i++) {
     var inputs = readline().split(' ');
     const factory1 = parseInt(inputs[0]);
@@ -261,7 +269,9 @@ for (let i = 0; i < linkCount; i++) {
     const distance = parseInt(inputs[2]);
 
     addsLink(factory1, factory2, distance);
+    sumDistance += distance;
 }
+MEAN_DISTANCE = sumDistance / linkCount;
 
 console.error('START GAME LOOP!!!');
 
