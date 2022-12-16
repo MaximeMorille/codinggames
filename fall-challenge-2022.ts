@@ -73,6 +73,7 @@ interface GameState {
     turn: number;
     goals: Array<Goal>;
     frontline: number;
+    invadingEnemies: number;
 }
 
 interface Goal extends Point {
@@ -110,6 +111,7 @@ const state: GameState = {
     turn: 0,
     goals: [],
     frontline: -1,
+    invadingEnemies: 0,
 };
 
 function updateBoard(newBoard: PartialBoard): GameState {
@@ -118,12 +120,21 @@ function updateBoard(newBoard: PartialBoard): GameState {
 }
 
 function addOrUpdateCellToBoard(x: number, y: number, cell: Cell): GameState {
+    if (x === state.frontline) {
+        const goal = findGoalOfCell(cell);
+
+        if (cell.scrapAmount === 0) {
+            goal.completed = true;
+            goal.conquered = true;
+            goal.targeted = true;
+        }
+    }
     state.board.cells.push(cell);
 
     if (cell.owner === OWNERSHIP.ME) {
         state.myCells.push(cell);
 
-        if (isGoal(cell) && cell.goal) {
+        if (cell.goal) {
             cell.goal.conquered = true;
         }
 
@@ -137,6 +148,9 @@ function addOrUpdateCellToBoard(x: number, y: number, cell: Cell): GameState {
     }
 
     if (cell.owner === OWNERSHIP.OPPONENT) {
+        if (isInMySide(cell)) {
+            state.invadingEnemies++;
+        }
         state.opponentCells.push(cell);
     }
 
@@ -171,13 +185,19 @@ function isNotProtected(cell: Cell): boolean {
     return !(state.board.protectedArea.topLeft.x <= cell.x && state.board.protectedArea.bottomRight.x >= cell.x);
 }
 
+function findGoalOfCell(cell: Cell): Goal {
+    const [goal] = state.goals.filter((g) => g.x === cell.x && g.y === cell.y);
+    cell.goal = goal;
+
+    return goal;
+}
+
 function isGoal(cell: Cell): boolean {
     if (cell.goal) {
         return true;
     }
 
-    const [goal] = state.goals.filter((g) => g.x === cell.x && g.y === cell.y);
-    cell.goal = goal;
+    const goal = findGoalOfCell(cell);
 
     return goal !== undefined;
 }
@@ -220,18 +240,34 @@ function enactBuildAction(): string {
     return 'WAIT';
 }
 
+function byShortestDistanceFrom(target?: Point) {
+    if (!target) {
+        return () => 0;
+    }
+
+    return (point1: Point, point2: Point) => {
+        return distanceBetween(point1, target) - distanceBetween(point2, target);
+    };
+}
+
 // To improve
 function enactSpawnAction(): string {
-    if (state.myMaterial >= 30) {
-        const { target: idealCell } = state.myCells
+    if (state.myMaterial >= 10) {
+        const nearestEnemyCell = state.opponentCells.sort(sortByMoreInMySide).at(0);
+        const spawnableCells = state.myCells
             .filter((c) => !c.hasRecycler && c.scrapAmount > 0 && c.x !== state.frontline)
-            .reduce(findNearestTarget(state.center), DEFAULT_TARGET_CANDIDATE);
+            .sort(byShortestDistanceFrom(nearestEnemyCell));
 
-        if (!idealCell) {
-            return 'WAIT';
-        }
+        return spawnableCells
+            .map((c) => {
+                if (state.myMaterial < 30) {
+                    return 'WAIT';
+                }
+                state.myMaterial -= 30;
 
-        return `SPAWN 3 ${idealCell.x} ${idealCell.y}`;
+                return `SPAWN 3 ${c.x} ${c.y}`;
+            })
+            .join(';');
     }
 
     return 'WAIT';
@@ -280,16 +316,24 @@ function captureGoal(unit: Unit): string {
     return `MOVE ${unit.size} ${unit.x} ${unit.y} ${targetedGoal.x} ${targetedGoal.y}`;
 }
 
-function inMySide(unit1: Unit, unit2: Unit): number {
+function isInMySide(point: Point): boolean {
     if (state.board.mySide === SIDE.LEFT) {
-        return unit1.x - unit2.x;
+        return point.x < state.center.x;
     }
 
-    return unit2.x - unit1.x;
+    return point.y < state.center.y;
+}
+
+function sortByMoreInMySide(p1: Point, p2: Point): number {
+    if (state.board.mySide === SIDE.LEFT) {
+        return p1.x - p2.x;
+    }
+
+    return p2.x - p1.x;
 }
 
 function enactAllMoveActions(): string[] {
-    return state.myUnits.sort(inMySide).map((unit, index) => {
+    return state.myUnits.sort(sortByMoreInMySide).map((unit, index) => {
         if (index === 0) {
             return enactNeutralConquestMove(unit);
         }
@@ -360,6 +404,7 @@ while (true) {
     var inputs: string[] = readline().split(' ');
     const myMatter: number = parseInt(inputs[0]);
     const oppMatter: number = parseInt(inputs[1]);
+    state.invadingEnemies = 0;
     state.board.cells = [];
     state.myMaterial = myMatter;
     state.opponentMaterial = oppMatter;
