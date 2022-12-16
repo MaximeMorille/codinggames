@@ -168,7 +168,7 @@ function isNotProtected(cell: Cell): boolean {
     if (!state.board.protectedArea) {
         return true;
     }
-    return !(state.board.protectedArea.topLeft.x < cell.x && state.board.protectedArea.bottomRight.x > cell.x);
+    return !(state.board.protectedArea.topLeft.x <= cell.x && state.board.protectedArea.bottomRight.x >= cell.x);
 }
 
 function isGoal(cell: Cell): boolean {
@@ -220,6 +220,7 @@ function enactBuildAction(): string {
     return 'WAIT';
 }
 
+// To improve
 function enactSpawnAction(): string {
     if (state.myMaterial >= 30) {
         const { target: idealCell } = state.myCells
@@ -279,16 +280,24 @@ function captureGoal(unit: Unit): string {
     return `MOVE ${unit.size} ${unit.x} ${unit.y} ${targetedGoal.x} ${targetedGoal.y}`;
 }
 
+function inMySide(unit1: Unit, unit2: Unit): number {
+    if (state.board.mySide === SIDE.LEFT) {
+        return unit1.x - unit2.x;
+    }
+
+    return unit2.x - unit1.x;
+}
+
 function enactAllMoveActions(): string[] {
-    return state.myUnits.map((unit) => {
+    return state.myUnits.sort(inMySide).map((unit, index) => {
+        if (index === 0) {
+            return enactNeutralConquestMove(unit);
+        }
         const availableGoals = state.goals.filter((g) => !g.completed && !g.targeted && !g.conquered);
         if (availableGoals.length > 0) {
             return captureGoal(unit);
         }
-        if (unit.size > 1) {
-            return enactAttackingMove(unit);
-        }
-        return enactNeutralConquestMove(unit);
+        return enactAttackingMove(unit);
     });
 }
 
@@ -319,7 +328,7 @@ function initGoals() {
                 y: 0,
             },
             bottomRight: {
-                x: state.frontline,
+                x: state.frontline - 1,
                 y: state.board.height - 1,
             },
         };
@@ -327,7 +336,7 @@ function initGoals() {
         state.frontline = state.center.x + 1;
         state.board.protectedArea = {
             topLeft: {
-                x: state.frontline,
+                x: state.frontline + 1,
                 y: 0,
             },
             bottomRight: {
