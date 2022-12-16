@@ -72,11 +72,13 @@ interface GameState {
     recyclersBuilt: number;
     turn: number;
     goals: Array<Goal>;
+    frontline: number;
 }
 
 interface Goal extends Point {
     completed: boolean;
     targeted: boolean;
+    conquered: boolean;
 }
 
 interface TargetCandidate {
@@ -107,6 +109,7 @@ const state: GameState = {
     center: { x: Math.floor(width / 2), y: Math.floor(height / 2) },
     turn: 0,
     goals: [],
+    frontline: -1,
 };
 
 function updateBoard(newBoard: PartialBoard): GameState {
@@ -119,6 +122,10 @@ function addOrUpdateCellToBoard(x: number, y: number, cell: Cell): GameState {
 
     if (cell.owner === OWNERSHIP.ME) {
         state.myCells.push(cell);
+
+        if (isGoal(cell) && cell.goal) {
+            cell.goal.conquered = true;
+        }
 
         if (cell.hasRecycler) {
             state.myRecyclers++;
@@ -190,23 +197,24 @@ function goalsFirst(cell1: Cell, cell2: Cell): number {
 // Need to improve this function
 function enactBuildAction(): string {
     if (state.myMaterial >= 10) {
-        const idealCell = state.myCells
-            .filter((c) => c.canBuild && c.units === 0 && isNotProtected(c))
-            .sort(goalsFirst)
-            .at(0);
+        const idealCells = state.myCells.filter((c) => c.canBuild && c.units === 0 && isNotProtected(c)).sort(goalsFirst);
 
-        if (!idealCell) {
+        if (idealCells.length === 0) {
             return 'WAIT';
         }
 
-        if (idealCell.goal) {
-            idealCell.goal.completed = true;
-        }
+        return idealCells
+            .map((idealCell) => {
+                if (idealCell.goal) {
+                    idealCell.goal.completed = true;
+                }
 
-        idealCell.canSpawn = false;
-        state.myMaterial -= 10;
-        state.recyclersBuilt++;
-        return `BUILD ${idealCell.x} ${idealCell.y}`;
+                idealCell.canSpawn = false;
+                state.myMaterial -= 10;
+                state.recyclersBuilt++;
+                return `BUILD ${idealCell.x} ${idealCell.y}`;
+            })
+            .join(';');
     }
 
     return 'WAIT';
@@ -215,7 +223,7 @@ function enactBuildAction(): string {
 function enactSpawnAction(): string {
     if (state.myMaterial >= 30) {
         const { target: idealCell } = state.myCells
-            .filter((c) => !c.hasRecycler && c.scrapAmount > 0)
+            .filter((c) => !c.hasRecycler && c.scrapAmount > 0 && c.x !== state.frontline)
             .reduce(findNearestTarget(state.center), DEFAULT_TARGET_CANDIDATE);
 
         if (!idealCell) {
@@ -246,7 +254,7 @@ function enactNeutralConquestMove(unit: Unit): string {
         .reduce(findNearestTarget(unit), DEFAULT_TARGET_CANDIDATE);
 
     if (!idealTarget) {
-        return 'WAIT';
+        return enactAttackingMove(unit);
     }
 
     return `MOVE ${unit.size} ${unit.x} ${unit.y} ${idealTarget.x} ${idealTarget.y}`;
@@ -254,10 +262,9 @@ function enactNeutralConquestMove(unit: Unit): string {
 
 function captureGoal(unit: Unit): string {
     const { target: idealTarget, distance } = state.goals
-        .filter((g) => !g.completed && !g.targeted)
+        .filter((g) => !g.completed && !g.targeted && !g.conquered)
         .reduce(findNearestTarget(unit), DEFAULT_TARGET_CANDIDATE);
 
-    console.error(unit, idealTarget, distance);
     if (!idealTarget) {
         return 'WAIT';
     }
@@ -274,7 +281,7 @@ function captureGoal(unit: Unit): string {
 
 function enactAllMoveActions(): string[] {
     return state.myUnits.map((unit) => {
-        const availableGoals = state.goals.filter((g) => !g.completed && !g.targeted);
+        const availableGoals = state.goals.filter((g) => !g.completed && !g.targeted && !g.conquered);
         if (availableGoals.length > 0) {
             return captureGoal(unit);
         }
@@ -304,24 +311,23 @@ function initGoals() {
 
     state.board.mySide = myFirstCell.x > state.center.x ? SIDE.RIGHT : SIDE.LEFT;
 
-    let frontline = 0;
     if (state.board.mySide === SIDE.LEFT) {
-        frontline = state.center.x - 1;
+        state.frontline = state.center.x - 1;
         state.board.protectedArea = {
             topLeft: {
                 x: 0,
                 y: 0,
             },
             bottomRight: {
-                x: frontline,
+                x: state.frontline,
                 y: state.board.height - 1,
             },
         };
     } else {
-        frontline = state.center.x + 1;
+        state.frontline = state.center.x + 1;
         state.board.protectedArea = {
             topLeft: {
-                x: frontline,
+                x: state.frontline,
                 y: 0,
             },
             bottomRight: {
@@ -332,10 +338,11 @@ function initGoals() {
     }
 
     state.goals = [...Array(state.board.height).keys()].map((y) => ({
-        x: frontline,
+        x: state.frontline,
         y,
         completed: false,
         targeted: false,
+        conquered: false,
     }));
 }
 
@@ -353,6 +360,10 @@ while (true) {
     state.myUnits = [];
     state.myRecyclers = 0;
     state.turn++;
+    state.goals.forEach((g) => {
+        g.targeted = false;
+        g.conquered = false;
+    });
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const [scrapAmount, owner, units, recycler, canBuild, canSpawn, inRangeOfRecycler] = readline()
