@@ -2,6 +2,8 @@
  * Auto-generated code below aims at helping you parse
  * the standard input according to the problem statement.
  **/
+declare function readline(): string;
+
 const MAX_NUMBER_OF_RECYCLERS = 5;
 
 enum OWNERSHIP {
@@ -56,6 +58,12 @@ interface GameState {
     center: Positionable;
     recyclersBuilt: number;
 }
+
+interface TargetCandidate {
+    target?: Positionable;
+    distance: number;
+}
+const DEFAULT_TARGET_CANDIDATE: TargetCandidate = { target: undefined, distance: Number.POSITIVE_INFINITY };
 
 var inputs: string[] = readline().split(' ');
 const width: number = parseInt(inputs[0]);
@@ -114,10 +122,29 @@ function distanceBetween(elt1: Positionable, elt2: Positionable): number {
     return Math.sqrt(Math.pow(elt1.x - elt2.x, 2) + Math.pow(elt1.y - elt2.y, 2));
 }
 
+function findNearestTarget({ target, distance }: TargetCandidate, candidate: Cell): TargetCandidate {
+    if (candidate.scrapAmount <= 0) {
+        return { target, distance };
+    }
+
+    const candidateDistance = distanceBetween(state.center, candidate);
+
+    if (candidateDistance < distance) {
+        return { target: candidate, distance: candidateDistance };
+    }
+
+    return { target, distance };
+}
+
 // Need to improve this function
 function enactBuildAction(): string {
     if (state.myMaterial >= 10 && state.myRecyclers < 3 && MAX_NUMBER_OF_RECYCLERS > state.recyclersBuilt) {
         const idealCell = state.myCells.filter((c) => c.canBuild && c.units === 0).at(0);
+
+        if (!idealCell) {
+            return 'WAIT';
+        }
+
         idealCell.canSpawn = false;
         state.myMaterial -= 10;
         state.recyclersBuilt++;
@@ -127,21 +154,14 @@ function enactBuildAction(): string {
     return 'WAIT';
 }
 
-// Need to improve this function
 function enactSpawnAction(): string {
     if (state.myMaterial >= 30) {
-        const { target: idealCell } = state.myCells.reduce(
-            ({ target, distance }, candidate) => {
-                const candidateDistance = distanceBetween(state.center, candidate);
+        const { target: idealCell } = state.myCells.reduce(findNearestTarget, DEFAULT_TARGET_CANDIDATE);
 
-                if (candidateDistance < distance) {
-                    return { target: candidate, distance: candidateDistance };
-                }
+        if (!idealCell) {
+            return 'WAIT';
+        }
 
-                return { target, distance };
-            },
-            { target: undefined, distance: Number.POSITIVE_INFINITY }
-        );
         return `SPAWN 3 ${idealCell.x} ${idealCell.y}`;
     }
 
@@ -149,22 +169,7 @@ function enactSpawnAction(): string {
 }
 
 function enactAttackingMove(unit: Unit): string {
-    const { target: idealTarget } = state.opponentCells.reduce(
-        ({ target, distance }, candidate) => {
-            if (candidate.scrapAmount <= 0) {
-                return { target, distance };
-            }
-
-            const candidateDistance = distanceBetween(unit, candidate);
-
-            if (candidateDistance < distance) {
-                return { target: candidate, distance: candidateDistance };
-            }
-
-            return { target, distance };
-        },
-        { target: undefined, distance: Number.POSITIVE_INFINITY }
-    );
+    const { target: idealTarget } = state.opponentCells.reduce(findNearestTarget, DEFAULT_TARGET_CANDIDATE);
 
     if (!idealTarget) {
         return 'WAIT';
@@ -174,22 +179,7 @@ function enactAttackingMove(unit: Unit): string {
 }
 
 function enactNeutralConquestMove(unit: Unit): string {
-    const { target: idealTarget } = state.neutralCells.reduce(
-        ({ target, distance }, candidate) => {
-            if (candidate.scrapAmount <= 0) {
-                return { target, distance };
-            }
-
-            const candidateDistance = distanceBetween(unit, candidate);
-
-            if (candidateDistance < distance) {
-                return { target: candidate, distance: candidateDistance };
-            }
-
-            return { target, distance };
-        },
-        { target: undefined, distance: Number.POSITIVE_INFINITY }
-    );
+    const { target: idealTarget } = state.neutralCells.reduce(findNearestTarget, DEFAULT_TARGET_CANDIDATE);
 
     if (!idealTarget) {
         return 'WAIT';
@@ -208,7 +198,7 @@ function enactAllMoveActions(): string[] {
 }
 
 function enactActions(): string {
-    let actions = [];
+    let actions: Array<string> = [];
 
     actions.push(enactBuildAction());
     actions.push(enactSpawnAction());
