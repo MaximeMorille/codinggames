@@ -66,6 +66,8 @@ while (true) {
     const startTime = Date.now();
     const easyTargets: Cell[] = [];
     const hardTargets: Cell[] = [];
+    let totalEasyResources = 0;
+    let totalHardResources = 0;
     for (let i = 0; i < numberOfCells; i++) {
         const inputs = readline().split(' ')
         const resources: number = parseInt(inputs[0]); // the current amount of eggs/crystals on this cell
@@ -76,27 +78,27 @@ while (true) {
         cells[i].myAnts = myAnts
         cells[i].oppAnts = oppAnts
 
-        if (resources > 0 && oppAnts === 0) {
-            easyTargets.push(cells[i]);
-        }
+        if (cells[i].type === CellType.CRYSTAL) {
+            if (resources > 0 && oppAnts === 0) {
+                totalEasyResources += cells[i].resources;
+                easyTargets.push(cells[i]);
+            }
 
-        if (resources > 0 && oppAnts > 0) {
-            hardTargets.push(cells[i]);
+            if (resources > 0 && oppAnts > 0) {
+                totalHardResources += cells[i].resources;
+                hardTargets.push(cells[i]);
+            }
         }
     }
-
-    // if (turn === 0) {
-    //     planThings();
-    // }
 
     const actions = []
 
     if (easyTargets.length > 0) {
-        easyTargets.forEach(t => actions.push(buildLineAction(t.index, myBases.at(0), 3)));
+        easyTargets.forEach(t => actions.push(buildLineAction(t.index, myBases.at(0), Math.ceil(300 * t.resources / totalEasyResources))));
     }
 
     if (hardTargets.length > 0) {
-        hardTargets.forEach(t => actions.push(buildLineAction(t.index, myBases.at(0), 1)));
+        hardTargets.forEach(t => actions.push(buildLineAction(t.index, myBases.at(0), Math.ceil(100 * t.resources / totalHardResources))));
     }
 
     if (actions.length === 0) {
