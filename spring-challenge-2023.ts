@@ -18,7 +18,13 @@ interface Cell {
     myAnts: number
     oppAnts: number
     index: number
-    distances: Record<number, number>
+    r: number
+    q: number
+    s: number
+    easy?: number
+    hard?: number
+    distanceToMe?: number
+    distanceToOpp?: number
 }
 
 function buildLineAction(start: number, end: number, strenght: number) {
@@ -33,8 +39,34 @@ function buildBeaconAction(index: number, strength: number) {
     return `BEACON ${index} ${strength}`;
 }
 
-const cells: Cell[] = []
-const cellsDistance: Record<number, Cell> = {};
+const cellMaps: Record<number, Cell> = {};
+
+function updateCellPosition(cell: Cell, r: number, q: number, s: number) {
+    console.error(`Update cell ${cell.index} with r: ${r}, q: ${q}, s: ${s}`);
+    cellMaps[cell.index].r = r;
+    cellMaps[cell.index].q = q;
+    cellMaps[cell.index].s = s;
+
+    const [neigh0, neigh1, neigh2, neigh3, neigh4, neigh5] = cell.neighbors;
+
+    cellMaps[neigh0] && cellMaps[neigh0].r === 0.1 && updateCellPosition(cellMaps[neigh0], r, q + 1, s - 1);
+    cellMaps[neigh1] && cellMaps[neigh1].r === 0.1 && updateCellPosition(cellMaps[neigh1], r - 1, q + 1, s);
+    cellMaps[neigh2] && cellMaps[neigh2].r === 0.1 && updateCellPosition(cellMaps[neigh2], r - 1, q, s + 1);
+    cellMaps[neigh3] && cellMaps[neigh3].r === 0.1 && updateCellPosition(cellMaps[neigh3], r, q - 1, s + 1);
+    cellMaps[neigh4] && cellMaps[neigh4].r === 0.1 && updateCellPosition(cellMaps[neigh4], r + 1, q - 1, s);
+    cellMaps[neigh5] && cellMaps[neigh5].r === 0.1 && updateCellPosition(cellMaps[neigh5], r + 1, q, s - 1);
+}
+
+function distanceBetweenCells(cell1: Cell, cell2: Cell): number {
+    return (
+        Math.abs(cell1.r - cell2.r) +
+        Math.abs(cell1.q - cell2.q) +
+        Math.abs(cell1.s - cell2.s)
+    ) / 2;
+}
+
+const eggsIndexes: number[] = [];
+const crystalsIndexes: number[] = [];
 
 const numberOfCells: number = parseInt(readline()); // amount of hexagonal cells in this map
 for (let i = 0; i < numberOfCells; i++) {
@@ -48,47 +80,52 @@ for (let i = 0; i < numberOfCells; i++) {
     const neigh4: number = parseInt(inputs[6]);
     const neigh5: number = parseInt(inputs[7]);
 
+    if (type === CellType.CRYSTAL) {
+        crystalsIndexes.push(i);
+    }
+
+    if (type === CellType.EGG) {
+        eggsIndexes.push(i);
+    }
+
     const neighbors = [neigh0, neigh1, neigh2, neigh3, neigh4, neigh5]
-    const cell: Cell = {
+
+    cellMaps[i] = {
         type,
         resources: initialResources,
-        neighbors: neighbors.filter(id => id > -1),
+        neighbors: neighbors,
         myAnts: 0,
         oppAnts: 0,
         index: i,
-        distances: {
-            [neigh0]: 1,
-            [neigh1]: 1,
-            [neigh2]: 1,
-            [neigh3]: 1,
-            [neigh4]: 1,
-            [neigh5]: 1,
-        }
-    }
-    cells.push(cell)
-
-    if (!cellsDistance[i]) {
-        cellsDistance[i] = cell;
-    }
-
-    neighbors.forEach(neigh => {
-        const neighCell = cellsDistance[neigh]
-        if (neighCell) {
-            Object.keys(neighCell.distances).forEach(relative => {
-                if (relative !== '-1' && relative !== `${i}`) {
-                    cell.distances[relative] = neighCell.distances[relative] + 1
-                }
-            });
-        }
-    })
+        r: 0.1,
+        q: 0.1,
+        s: 0.1,
+    };
 }
 
-console.error(cellsDistance);
+updateCellPosition(cellMaps[0], 0, 0, 0);
 
 const numberOfBases: number = parseInt(readline());
 const myBases: number[] = readline().split(' ').map(n => parseInt(n))
 const oppBases: number[] = readline().split(' ').map(n => parseInt(n))
 let turn: number = 0;
+
+const computeDifficulties = (i: number): void => {
+    const myNearestDistance = myBases.reduce((currentDistance, baseIndex) => Math.min(currentDistance, distanceBetweenCells(cellMaps[i], cellMaps[baseIndex])), Number.POSITIVE_INFINITY)
+    const oppNearestDistance = oppBases.reduce((currentDistance, baseIndex) => Math.min(currentDistance, distanceBetweenCells(cellMaps[i], cellMaps[baseIndex])), Number.POSITIVE_INFINITY)
+    cellMaps[i] = {
+        ...cellMaps[i],
+        easy: 100 * (oppNearestDistance - myNearestDistance) / (oppNearestDistance + myNearestDistance),
+        hard: 100 * (myNearestDistance - oppNearestDistance) / (oppNearestDistance + myNearestDistance),
+        distanceToMe: myNearestDistance,
+        distanceToOpp: oppNearestDistance,
+    }
+};
+
+eggsIndexes.forEach(computeDifficulties);
+crystalsIndexes.forEach(computeDifficulties);
+
+const cells: Cell[] = Object.values(cellMaps);
 
 // game loop
 while (true) {
@@ -103,19 +140,19 @@ while (true) {
         const myAnts: number = parseInt(inputs[1]); // the amount of your ants on this cell
         const oppAnts: number = parseInt(inputs[2]); // the amount of opponent ants on this cell
 
-        cells[i].resources = resources
-        cells[i].myAnts = myAnts
-        cells[i].oppAnts = oppAnts
+        const cell = cells[i]
+        cell.resources = resources
+        cell.myAnts = myAnts
+        cell.oppAnts = oppAnts
 
-        if (cells[i].type === CellType.CRYSTAL) {
-            if (resources > 0 && oppAnts === 0) {
-                totalEasyResources += cells[i].resources;
-                easyTargets.push(cells[i]);
-            }
-
-            if (resources > 0 && oppAnts > 0) {
-                totalHardResources += cells[i].resources;
-                hardTargets.push(cells[i]);
+        if (resources > 0) {
+            console.error(cell);
+            if (cell.easy > cell.hard) {
+                totalEasyResources += cell.resources;
+                easyTargets.push(cell);
+            } else {
+                totalHardResources += cell.resources;
+                hardTargets.push(cell);
             }
         }
     }
