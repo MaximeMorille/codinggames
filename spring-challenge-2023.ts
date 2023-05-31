@@ -18,6 +18,7 @@ interface Cell {
     myAnts: number
     oppAnts: number
     index: number
+    distances: Record<number, number>
 }
 
 function buildLineAction(start: number, end: number, strenght: number) {
@@ -33,6 +34,7 @@ function buildBeaconAction(index: number, strength: number) {
 }
 
 const cells: Cell[] = []
+const cellsDistance: Record<number, Cell> = {};
 
 const numberOfCells: number = parseInt(readline()); // amount of hexagonal cells in this map
 for (let i = 0; i < numberOfCells; i++) {
@@ -46,21 +48,48 @@ for (let i = 0; i < numberOfCells; i++) {
     const neigh4: number = parseInt(inputs[6]);
     const neigh5: number = parseInt(inputs[7]);
 
+    const neighbors = [neigh0, neigh1, neigh2, neigh3, neigh4, neigh5]
     const cell: Cell = {
         type,
         resources: initialResources,
-        neighbors: [neigh0, neigh1, neigh2, neigh3, neigh4, neigh5].filter(id => id > -1),
+        neighbors: neighbors.filter(id => id > -1),
         myAnts: 0,
         oppAnts: 0,
         index: i,
+        distances: {
+            [neigh0]: 1,
+            [neigh1]: 1,
+            [neigh2]: 1,
+            [neigh3]: 1,
+            [neigh4]: 1,
+            [neigh5]: 1,
+        }
     }
     cells.push(cell)
+
+    if (!cellsDistance[i]) {
+        cellsDistance[i] = cell;
+    }
+
+    neighbors.forEach(neigh => {
+        const neighCell = cellsDistance[neigh]
+        if (neighCell) {
+            Object.keys(neighCell.distances).forEach(relative => {
+                if (relative !== '-1' && relative !== `${i}`) {
+                    cell.distances[relative] = neighCell.distances[relative] + 1
+                }
+            });
+        }
+    })
 }
+
+console.error(cellsDistance);
 
 const numberOfBases: number = parseInt(readline());
 const myBases: number[] = readline().split(' ').map(n => parseInt(n))
 const oppBases: number[] = readline().split(' ').map(n => parseInt(n))
 let turn: number = 0;
+
 // game loop
 while (true) {
     const startTime = Date.now();
