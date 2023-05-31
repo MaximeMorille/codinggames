@@ -163,8 +163,8 @@ while (true) {
         if (t.easy > 50) {
             actions.push(buildLineAction(t.index, myBases.at(0), t.type === CellType.EGG ? 300 : 100));
             done++;
-        } else if (done < maxByAnts(totalAnts)) {
-            actions.push(buildLineAction(t.index, myBases.at(0), 300));
+        } else if (done < maxByAnts(totalAnts) && (t.type === CellType.EGG && t.easy > 0 || CellType.CRYSTAL === t.type)) {
+            actions.push(buildLineAction(t.index, myBases.at(0), Math.floor(200 * (t.easy + 100) / 100)));
             done++;
         }
     });
