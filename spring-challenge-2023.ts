@@ -130,10 +130,7 @@ const cells: Cell[] = Object.values(cellMaps);
 // game loop
 while (true) {
     const startTime = Date.now();
-    const easyTargets: Cell[] = [];
-    const hardTargets: Cell[] = [];
-    let totalEasyResources = 0;
-    let totalHardResources = 0;
+    const targets: Cell[] = [];
     for (let i = 0; i < numberOfCells; i++) {
         const inputs = readline().split(' ')
         const resources: number = parseInt(inputs[0]); // the current amount of eggs/crystals on this cell
@@ -146,26 +143,25 @@ while (true) {
         cell.oppAnts = oppAnts
 
         if (resources > 0) {
-            console.error(cell);
-            if (cell.easy > cell.hard) {
-                totalEasyResources += cell.resources;
-                easyTargets.push(cell);
-            } else {
-                totalHardResources += cell.resources;
-                hardTargets.push(cell);
+            if (turn < 10 || cell.type === CellType.CRYSTAL) {
+                targets.push(cell);
             }
         }
     }
 
     const actions = []
 
-    if (easyTargets.length > 0) {
-        easyTargets.forEach(t => actions.push(buildLineAction(t.index, myBases.at(0), Math.ceil(300 * t.resources / totalEasyResources))));
-    }
-
-    if (hardTargets.length > 0) {
-        hardTargets.forEach(t => actions.push(buildLineAction(t.index, myBases.at(0), Math.ceil(100 * t.resources / totalHardResources))));
-    }
+    let done = 0;
+    targets.sort((t1, t2) => t2.easy - t1.easy).forEach(t => {
+        console.error(t);
+        if (t.easy > 50) {
+            actions.push(buildLineAction(t.index, myBases.at(0), t.type === CellType.EGG ? 300 : 100));
+            done++;
+        } else if (done < 3) {
+            actions.push(buildLineAction(t.index, myBases.at(0), 300));
+            done++;
+        }
+    });
 
     if (actions.length === 0) {
         console.log('WAIT');
