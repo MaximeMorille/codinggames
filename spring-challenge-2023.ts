@@ -65,6 +65,10 @@ function distanceBetweenCells(cell1: Cell, cell2: Cell): number {
     ) / 2;
 }
 
+function maxByAnts(ants: number) {
+    return Math.max(3, Math.floor(ants / 5));
+}
+
 const eggsIndexes: number[] = [];
 const crystalsIndexes: number[] = [];
 
@@ -131,12 +135,14 @@ const cells: Cell[] = Object.values(cellMaps);
 while (true) {
     const startTime = Date.now();
     const targets: Cell[] = [];
+    let totalAnts: number = 0;
     for (let i = 0; i < numberOfCells; i++) {
         const inputs = readline().split(' ')
         const resources: number = parseInt(inputs[0]); // the current amount of eggs/crystals on this cell
         const myAnts: number = parseInt(inputs[1]); // the amount of your ants on this cell
         const oppAnts: number = parseInt(inputs[2]); // the amount of opponent ants on this cell
 
+        totalAnts += myAnts;
         const cell = cells[i]
         cell.resources = resources
         cell.myAnts = myAnts
@@ -157,7 +163,7 @@ while (true) {
         if (t.easy > 50) {
             actions.push(buildLineAction(t.index, myBases.at(0), t.type === CellType.EGG ? 300 : 100));
             done++;
-        } else if (done < 3) {
+        } else if (done < maxByAnts(totalAnts)) {
             actions.push(buildLineAction(t.index, myBases.at(0), 300));
             done++;
         }
