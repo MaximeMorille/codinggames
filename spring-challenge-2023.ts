@@ -23,6 +23,7 @@ interface Cell {
     s: number
     easy?: number
     hard?: number
+    myNearestBase?: number
     distanceToMe?: number
     distanceToOpp?: number
 }
@@ -115,12 +116,23 @@ const oppBases: number[] = readline().split(' ').map(n => parseInt(n))
 let turn: number = 0;
 
 const computeDifficulties = (i: number): void => {
-    const myNearestDistance = myBases.reduce((currentDistance, baseIndex) => Math.min(currentDistance, distanceBetweenCells(cellMaps[i], cellMaps[baseIndex])), Number.POSITIVE_INFINITY)
+    const [myNearestDistance, myNearestBase] = myBases.reduce(
+        ([currentDistance, base], baseIndex) => {
+            const baseDistance = distanceBetweenCells(cellMaps[i], cellMaps[baseIndex])
+            if (currentDistance > baseDistance) {
+                return [baseDistance, baseIndex];
+            }
+
+            return [currentDistance, base];
+        },
+        [Number.POSITIVE_INFINITY, null]
+    );
     const oppNearestDistance = oppBases.reduce((currentDistance, baseIndex) => Math.min(currentDistance, distanceBetweenCells(cellMaps[i], cellMaps[baseIndex])), Number.POSITIVE_INFINITY)
     cellMaps[i] = {
         ...cellMaps[i],
         easy: 100 * (oppNearestDistance - myNearestDistance) / (oppNearestDistance + myNearestDistance),
         hard: 100 * (myNearestDistance - oppNearestDistance) / (oppNearestDistance + myNearestDistance),
+        myNearestBase,
         distanceToMe: myNearestDistance,
         distanceToOpp: oppNearestDistance,
     }
@@ -131,11 +143,25 @@ crystalsIndexes.forEach(computeDifficulties);
 
 const cells: Cell[] = Object.values(cellMaps);
 
+function needsEggs(target: Cell) {
+
+}
+
+function needsCrystals(target: Cell) {
+
+}
+
+function needsAll(target: Cell) {
+
+}
+
 // game loop
 while (true) {
     const startTime = Date.now();
-    const targets: Cell[] = [];
+    let targets: Cell[] = [];
+    const minorTargets: Cell[] = [];
     let totalAnts: number = 0;
+    let eggsPriority = false;
     for (let i = 0; i < numberOfCells; i++) {
         const inputs = readline().split(' ')
         const resources: number = parseInt(inputs[0]); // the current amount of eggs/crystals on this cell
@@ -149,11 +175,25 @@ while (true) {
         cell.oppAnts = oppAnts
 
         if (resources > 0) {
-            if (turn < 10 || cell.type === CellType.CRYSTAL) {
+            if (
+                cell.distanceToMe <= 2
+                && cell.type === CellType.EGG
+            ) {
+                if (!eggsPriority || cell.resources > targets.at(0).resources) {
+                    targets.forEach(t => minorTargets.push(t));
+                    targets = [cell];
+                }
+                eggsPriority = true;
+                console.error('eggsPriority', eggsPriority)
+            } else if (!eggsPriority) {
                 targets.push(cell);
+            } else {
+                minorTargets.push(cell);
             }
         }
     }
+
+    console.error(targets);
 
     const actions = []
 
@@ -161,10 +201,20 @@ while (true) {
     targets.sort((t1, t2) => t2.easy - t1.easy).forEach(t => {
         console.error(t);
         if (t.easy > 50) {
-            actions.push(buildLineAction(t.index, myBases.at(0), t.type === CellType.EGG ? 300 : 100));
+            actions.push(buildLineAction(t.index, t.myNearestBase, t.type === CellType.EGG ? 300 : 100));
             done++;
         } else if (done < maxByAnts(totalAnts) && (t.type === CellType.EGG && t.easy > 0 || CellType.CRYSTAL === t.type)) {
-            actions.push(buildLineAction(t.index, myBases.at(0), Math.floor(200 * (t.easy + 100) / 100)));
+            actions.push(buildLineAction(t.index, t.myNearestBase, Math.floor(200 * (t.easy + 100) / 100)));
+            done++;
+        }
+    });
+    minorTargets.sort((t1, t2) => t2.easy - t1.easy).forEach(t => {
+        console.error(t);
+        if (t.easy > 50) {
+            actions.push(buildLineAction(t.index, t.myNearestBase, t.type === CellType.EGG ? 300 : 100));
+            done++;
+        } else if (done < maxByAnts(totalAnts) && (t.type === CellType.EGG && t.easy > 0 || CellType.CRYSTAL === t.type)) {
+            actions.push(buildLineAction(t.index, t.myNearestBase, Math.floor(200 * (t.easy + 100) / 100)));
             done++;
         }
     });
@@ -182,3 +232,9 @@ while (true) {
     turn++;
     console.error(`Time for turn: ${Date.now() - startTime}, initial turn: ${firstTurnDuration}`);
 }
+
+/**
+ * Notes:
+ * - big games vs small games ? (number of crystal cells indicates if eggs are important, or not)
+ * - needs a target per base (eggsPriority)
+ */
