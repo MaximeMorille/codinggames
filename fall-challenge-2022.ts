@@ -27,7 +27,7 @@ interface Unit extends Point {
     size: number;
 }
 
-interface Cell extends Point {
+interface FallChallengeCell extends Point {
     scrapAmount: number;
     owner: OWNERSHIP;
     units: number;
@@ -48,13 +48,13 @@ interface PartialBoard {
     height?: number;
     myMaterial?: number;
     opponentMaterial?: number;
-    cells?: Array<Cell>;
+    cells?: Array<FallChallengeCell>;
 }
 
 interface Board {
     width: number;
     height: number;
-    cells: Array<Cell>;
+    cells: Array<FallChallengeCell>;
     protectedArea?: Area;
     mySide?: SIDE;
 }
@@ -64,9 +64,9 @@ interface GameState {
     myMaterial: number;
     opponentMaterial: number;
     myUnits: Array<Unit>;
-    myCells: Array<Cell>;
-    neutralCells: Array<Cell>;
-    opponentCells: Array<Cell>;
+    myCells: Array<FallChallengeCell>;
+    neutralCells: Array<FallChallengeCell>;
+    opponentCells: Array<FallChallengeCell>;
     myRecyclers: number;
     center: Point;
     recyclersBuilt: number;
@@ -119,7 +119,7 @@ function updateBoard(newBoard: PartialBoard): GameState {
     return state;
 }
 
-function addOrUpdateCellToBoard(x: number, y: number, cell: Cell): GameState {
+function addOrUpdateCellToBoard(x: number, y: number, cell: FallChallengeCell): GameState {
     if (x === state.frontline) {
         const goal = findGoalOfCell(cell);
 
@@ -178,21 +178,21 @@ function findNearestTarget(point: Point) {
     };
 }
 
-function isNotProtected(cell: Cell): boolean {
+function isNotProtected(cell: FallChallengeCell): boolean {
     if (!state.board.protectedArea) {
         return true;
     }
     return !(state.board.protectedArea.topLeft.x <= cell.x && state.board.protectedArea.bottomRight.x >= cell.x);
 }
 
-function findGoalOfCell(cell: Cell): Goal {
+function findGoalOfCell(cell: FallChallengeCell): Goal {
     const [goal] = state.goals.filter((g) => g.x === cell.x && g.y === cell.y);
     cell.goal = goal;
 
     return goal;
 }
 
-function isGoal(cell: Cell): boolean {
+function isGoal(cell: FallChallengeCell): boolean {
     if (cell.goal) {
         return true;
     }
@@ -202,7 +202,7 @@ function isGoal(cell: Cell): boolean {
     return goal !== undefined;
 }
 
-function goalsFirst(cell1: Cell, cell2: Cell): number {
+function goalsFirst(cell1: FallChallengeCell, cell2: FallChallengeCell): number {
     if (isGoal(cell1)) {
         return -1;
     }
@@ -424,7 +424,7 @@ while (true) {
                 .split(' ')
                 .map(Number);
 
-            const cell: Cell = {
+            const cell: FallChallengeCell = {
                 x,
                 y,
                 scrapAmount,

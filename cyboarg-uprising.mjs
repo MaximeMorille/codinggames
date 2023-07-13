@@ -156,7 +156,7 @@ function moveTroopsToNeedingBase(factory) {
 }
 
 function buildBombCommand(notMine, myFactories, turn) {
-    const targets = notMine.filter((f) => (f.owner === 'ENNEMY' && f.production === 3) || turn === 0);
+    const targets = notMine.filter((f) => (f.owner === 'ENNEMY' && f.production === 3) || turn % 5 === 0);
 
     let bombCmd = '';
     if (myFactories.length > 0) {
@@ -204,7 +204,7 @@ function buildAttackCommand(myFactories) {
         });
 
         if (currentTroops > 0 && factory.nearestHostile !== undefined) {
-                newCommand += `MOVE ${factory.id} ${factory.nearestHostile.id} ${factory.troops};`;
+            newCommand += `MOVE ${factory.id} ${factory.nearestHostile.id} ${factory.troops};`;
         }
 
         if (newCommand === '') {
