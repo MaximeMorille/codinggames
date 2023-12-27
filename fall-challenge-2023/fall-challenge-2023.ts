@@ -45,6 +45,8 @@ interface Drone extends Point {
         BR: number;
     };
     scannedCreatures: Array<number>;
+    visibleMonsters: Array<Creature>;
+    persistentAction: string;
 }
 
 interface Player {
@@ -231,8 +233,34 @@ function whereIsNemo(drone: Drone, fishesMap: Record<number, Creature>, boundari
     return `MOVE ${newX} ${newY} ${lightOn}`;
 }
 
+function savePoints(drone: Drone) {
+    drone.persistentAction = moveToSurface(drone, false);
+    return moveToSurface(drone, false);
+}
+
 function endGameAction(drone: Drone) {
-    return `MOVE ${drone.x} 500 ${drone.battery > 4 ? 1 : 0}`;
+    return moveToSurface(drone, drone.battery > 4);
+}
+
+function moveToSurface(drone: Drone, useLights: boolean) {
+    return `MOVE ${drone.x} 500 ${useLights ? 1 : 0}`;
+}
+
+function resetPersistentActionIfDone(drone: Drone) {
+    const action = drone.persistentAction;
+
+    if (action.startsWith('WAIT')) {
+        drone.persistentAction = '';
+        return;
+    }
+
+    const [verb, x, y, usingLight] = action.split(' ');
+    console.error('Checking persistent action', drone.x, x, drone.y, y)
+
+    if (drone.x === parseInt(x) && drone.y === parseInt(y)) {
+        drone.persistentAction = '';
+        return;
+    }
 }
 
 /**
@@ -273,6 +301,14 @@ while (true) {
         const battery: number = parseInt(inputs[4]);
 
         console.error('DRONE !', droneId, droneX, droneY)
+
+        if (emergency === 1) {
+            state.me.drones[droneId].scannedCreatures.forEach(creatureId => {
+                state.me.scannedCreatures = state.me.scannedCreatures.filter(c => c !== creatureId);
+                FISHES[creatureId].scanned = false;
+            });
+        }
+        const lastAction = state.me.drones[droneId]?.persistentAction;
         state.me.drones[droneId] = {
             id: droneId,
             x: droneX,
@@ -292,7 +328,9 @@ while (true) {
                 BR: 0
             },
             areas: getDroneAreas(droneX, droneY),
-            scannedCreatures: []
+            scannedCreatures: [],
+            visibleMonsters: [],
+            persistentAction: lastAction ?? '',
         }
     }
     const foeDroneCount: number = parseInt(readline());
@@ -333,9 +371,11 @@ while (true) {
         FISHES[creatureId].y = creatureY;
         FISHES[creatureId].vX = creatureVx;
         FISHES[creatureId].vY = creatureVy;
-        // if (FISHES[creatureId].points < 1) {
-        //     FISHES[creatureId].points = getFishPoints(creatureY);
-        // }
+
+        if (FISHES[creatureId].type === -1) {
+            const nearestDrone = Object.values(state.me.drones).reduce(findNearestTarget(FISHES[creatureId]), DEFAULT_TARGET_CANDIDATE).target;
+            state.me.drones[nearestDrone.id].visibleMonsters.push(FISHES[creatureId]);
+        }
     }
     const radarBlipCount: number = parseInt(readline());
     state.blipsCount = radarBlipCount / Object.keys(state.me.drones).length;
@@ -346,11 +386,17 @@ while (true) {
         const radar: string = inputs[2];
 
         const currentFish = FISHES[creatureId];
+        const currentDrone = state.me.drones[droneId];
         if (currentFish.scanned) {
             continue;
         }
-        const currentDrone = state.me.drones[droneId];
-        currentDrone.density[radar] += 1 / currentDrone.areas[radar];
+
+        if (currentFish.type === -1) {
+            // currentDrone.density[radar] = -1 / currentDrone.areas[radar];
+            console.error('do something here ?');
+        } else {
+            currentDrone.density[radar] += 1 / currentDrone.areas[radar];
+        }
         currentDrone.creaturesDirection[creatureId] = BlipDirection[radar];
     }
 
@@ -360,8 +406,13 @@ while (true) {
         let action = 'WAIT 1';
         try {
             console.error(state.blipsCount - state.me.scannedCreatures.length, 'Missing scans ?')
-            if (state.turn >= 185 || state.me.scannedCreatures.length >= state.blipsCount) {
+            if (currentDrone.persistentAction) {
+                action = currentDrone.persistentAction;
+                resetPersistentActionIfDone(currentDrone);
+            } else if (state.turn >= 185 || state.me.scannedCreatures.length >= state.blipsCount) {
                 action = endGameAction(currentDrone);
+            } else if (currentDrone.visibleMonsters.length > 0 && currentDrone.scannedCreatures.length > 0) {
+                action = savePoints(currentDrone);
             } else {
                 const boundaries: Boundaries = {
                     xMin: droneIndex * xStep,
