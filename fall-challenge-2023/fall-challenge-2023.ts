@@ -51,18 +51,25 @@ interface Player {
     score: number;
     scannedCreatures: Array<number>;
     drones: Record<number, Drone>;
-    missingScans: number;
 }
 
 interface Fall2023GameState {
     me: Player;
     opponent: Player;
     turn: number;
+    blipsCount: number;
 }
 
 interface TargetCandidate {
     target?: Point;
     distance: number;
+}
+
+interface Boundaries {
+    xMin: number;
+    xMax: number;
+    yMin: number;
+    yMax: number;
 }
 
 const DEFAULT_TARGET_CANDIDATE: TargetCandidate = { target: undefined, distance: Number.POSITIVE_INFINITY };
@@ -74,9 +81,9 @@ const state: Fall2023GameState = {
         drones: [],
         scannedCreatures: [],
         score: 0,
-        missingScans: 0,
     },
     opponent: null,
+    blipsCount: 0,
 };
 
 function distanceBetween(elt1: Point, elt2: Point): number {
@@ -95,8 +102,8 @@ function findNearestTarget(point: Point) {
     };
 }
 
-function fixCoordinate(value: number): number {
-    return Math.max(800, Math.min(value, 9_200));
+const fixCoordinate = (min: number, max: number) => (value: number): number => {
+    return Math.max(min, Math.min(value, max));
 }
 
 function getDroneAreas(x: number, y: number) {
@@ -161,8 +168,8 @@ function middlePointOf(x: number, y: number) {
     return {
         target: {
             id: Number.NaN,
-            x: fixCoordinate(x),
-            y: Math.max(2_500, fixCoordinate(y)),
+            x: fixCoordinate(600, 9_400)(x),
+            y: Math.max(2_500, fixCoordinate(600, 9_400)(y)),
         },
         distance: Number.NaN
     };
@@ -193,7 +200,18 @@ function getMiddlePoint(direction: BlipDirection, drone: Drone) {
     }
 }
 
-function whereIsNemo(drone: Drone, fishesMap: Record<number, Creature>): string {
+function isLightOn(x: number, drone: Drone) {
+    if (drone.battery <= 4) {
+        return 0;
+    }
+    if (x < 2000 || x > 8000) {
+        return 1;
+    }
+
+    return 0;
+}
+
+function whereIsNemo(drone: Drone, fishesMap: Record<number, Creature>, boundaries: Boundaries): string {
     if (drone.scannedCreatures.length > 5) {
         return endGameAction(drone);
     }
@@ -207,7 +225,10 @@ function whereIsNemo(drone: Drone, fishesMap: Record<number, Creature>): string 
         console.error(drone.x, drone.y, bestDirection, toScan.target);
     }
 
-    return `MOVE ${fixCoordinate(toScan.target.x)} ${Math.max(2_500, fixCoordinate(toScan.target.y))} 0`;
+    const newX = fixCoordinate(boundaries.xMin, boundaries.xMax)(toScan.target.x);
+    const newY = fixCoordinate(boundaries.yMin, boundaries.yMax)(toScan.target.y);
+    const lightOn = isLightOn(newX, drone);
+    return `MOVE ${newX} ${newY} ${lightOn}`;
 }
 
 function endGameAction(drone: Drone) {
@@ -225,7 +246,6 @@ for (let i = 0; i < creatureCount; i++) {
     const color: number = parseInt(inputs[1]);
     const type: number = parseInt(inputs[2]);
     updateFish(creatureId, color, type);
-    state.me.missingScans++;
 }
 
 // game loop
@@ -235,7 +255,6 @@ while (true) {
     const myScanCount: number = parseInt(readline());
     state.turn++;
     state.me.score = myScore;
-    state.me.scannedCreatures = [];
     resetVisibility();
     for (let i = 0; i < myScanCount; i++) {
         const creatureId: number = parseInt(readline());
@@ -297,7 +316,7 @@ while (true) {
         state.me.drones[droneId].scannedCreatures.push(creatureId);
         if (!FISHES[creatureId].scanned) {
             FISHES[creatureId].scanned = true;
-            state.me.missingScans--;
+            state.me.scannedCreatures.push(creatureId);
         }
     }
     const visibleCreatureCount: number = parseInt(readline());
@@ -319,6 +338,7 @@ while (true) {
         // }
     }
     const radarBlipCount: number = parseInt(readline());
+    state.blipsCount = radarBlipCount / Object.keys(state.me.drones).length;
     for (let i = 0; i < radarBlipCount; i++) {
         var inputs: string[] = readline().split(' ');
         const droneId: number = parseInt(inputs[0]);
@@ -334,19 +354,28 @@ while (true) {
         currentDrone.creaturesDirection[creatureId] = BlipDirection[radar];
     }
 
+    let droneIndex = 0;
+    const xStep = Math.floor(10_000 / Object.values(state.me.drones).length);
     Object.values(state.me.drones).forEach(currentDrone => {
         let action = 'WAIT 1';
         try {
-            console.error(state.me.missingScans, 'Missing scans ?')
-            if (state.turn >= 185 || state.me.missingScans <= 0) {
+            console.error(state.blipsCount - state.me.scannedCreatures.length, 'Missing scans ?')
+            if (state.turn >= 185 || state.me.scannedCreatures.length >= state.blipsCount) {
                 action = endGameAction(currentDrone);
             } else {
-                action = whereIsNemo(currentDrone, FISHES);
+                const boundaries: Boundaries = {
+                    xMin: droneIndex * xStep,
+                    xMax: (droneIndex + 1) * xStep,
+                    yMin: 2_500,
+                    yMax: 9_600,
+                }
+                action = whereIsNemo(currentDrone, FISHES, boundaries);
             }
         } catch (e) {
             console.error(e);
         }
 
         console.log(action);
+        droneIndex++;
     });
 }
