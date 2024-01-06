@@ -46,6 +46,12 @@ interface Drone extends Point {
     };
     scannedCreatures: Array<number>;
     visibleMonsters: Array<Creature>;
+    dangerousDirections: {
+        TL: number;
+        TR: number;
+        BL: number;
+        BR: number;
+    };
     persistentAction: string;
 }
 
@@ -158,7 +164,7 @@ function getBestDirection(drone: Drone): BlipDirection {
     let currentBest = Number.NEGATIVE_INFINITY;
 
     Object.keys(BlipDirection).forEach(direction => {
-        if (currentBest < drone.density[direction]) {
+        if (drone.dangerousDirections[direction] === 0 && currentBest < drone.density[direction]) {
             currentBest = drone.density[direction];
             bestDirection = BlipDirection[direction];
         }
@@ -213,6 +219,24 @@ function isLightOn(x: number, drone: Drone) {
     return 0;
 }
 
+function getDirection(drone: Point, monster: Point): BlipDirection {
+    let direction;
+
+    if (drone.y > monster.y) {
+        direction += 'B';
+    } else {
+        direction += 'T';
+    }
+
+    if (drone.x > monster.x) {
+        direction += 'R';
+    } else {
+        direction += 'L';
+    }
+
+    return BlipDirection[direction];
+}
+
 function whereIsNemo(drone: Drone, fishesMap: Record<number, Creature>, boundaries: Boundaries): string {
     if (drone.scannedCreatures.length > 5) {
         return endGameAction(drone);
@@ -223,6 +247,11 @@ function whereIsNemo(drone: Drone, fishesMap: Record<number, Creature>, boundari
 
     if (!toScan.target) {
         const bestDirection: BlipDirection = getBestDirection(drone);
+
+        if (!bestDirection) {
+            return savePoints(drone);
+        }
+
         toScan = getMiddlePoint(bestDirection, drone);
         console.error(drone.x, drone.y, bestDirection, toScan.target);
     }
@@ -330,6 +359,12 @@ while (true) {
             areas: getDroneAreas(droneX, droneY),
             scannedCreatures: [],
             visibleMonsters: [],
+            dangerousDirections: {
+                TL: 0,
+                TR: 0,
+                BL: 0,
+                BR: 0
+            },
             persistentAction: lastAction ?? '',
         }
     }
@@ -375,6 +410,7 @@ while (true) {
         if (FISHES[creatureId].type === -1) {
             const nearestDrone = Object.values(state.me.drones).reduce(findNearestTarget(FISHES[creatureId]), DEFAULT_TARGET_CANDIDATE).target;
             state.me.drones[nearestDrone.id].visibleMonsters.push(FISHES[creatureId]);
+            state.me.drones[nearestDrone.id].dangerousDirections[getDirection(nearestDrone, FISHES[creatureId])]++;
         }
     }
     const radarBlipCount: number = parseInt(readline());
